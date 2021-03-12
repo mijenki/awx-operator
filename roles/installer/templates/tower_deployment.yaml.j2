@@ -183,6 +183,10 @@ spec:
                 fieldRef:
                   fieldPath: status.podIP
 {% endif %}
+{% if tower_image_pull_secret %}
+      imagePullSecrets:
+        - name: {{ tower_image_pull_secret }}
+{% endif %}
       volumes:
 {% if tower_ingress_type | lower == 'route' and tower_route_tls_termination_mechanism | lower == 'passthrough' %}
         - name: "{{ meta.name }}-nginx-certs"

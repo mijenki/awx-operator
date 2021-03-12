@@ -58,6 +58,7 @@ tower_extra_volumes: ''
 tower_image: quay.io/ansible/awx:execution-environments
 tower_image_pull_policy: IfNotPresent
 default_ee: quay.io/ansible/awx-ee
+tower_image_pull_secret: ''
 
 tower_create_preload_data: true
 

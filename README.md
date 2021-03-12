@@ -209,6 +209,22 @@ spec:
 
 ### Advanced Configuration
 
+#### Deploying using a private image repository
+
+Specify #TODO
+
+| Name                    | Description                | Default            |
+| ----------------------- | -------------------------- | ------------------ |
+| tower_image_pull_secret | The name of the secret for accessing your private image repository | EmptyString |
+
+```yaml
+---
+spec:
+  ...
+  tower_image_pull_secret: my-repo-secret
+```
+
+
 #### Deploying a specific version of AWX
 
 There are two variables that are customizable for awx the image management.
@@ -217,6 +233,7 @@ There are two variables that are customizable for awx the image management.
 | ----------------------- | -------------------------- | ------------------ |
 | tower_image             | Path of the image to pull  | ansible/awx:15.0.0 |
 | tower_image_pull_policy | The pull policy to adopt   | IfNotPresent       |
+
 
 Example of customization could be:
 
