@@ -97,6 +97,9 @@ spec:
                     - never
                     - IfNotPresent
                     - ifnotpresent
+                tower_image_pull_secret:
+                  description: Secret where the private image repository credentials are stored
+                  type: string
                 tower_task_resource_requirements:
                   description: Resource requirements for the task container
                   properties:
