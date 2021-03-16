@@ -102,7 +102,9 @@ spec:
                     - ifnotpresent
                 tower_image_pull_secrets:
                   description: Secret(s) where the private image repository credentials are stored
-                  type: list
+                  type: array
+                  items:
+                    type: string
                 tower_task_resource_requirements:
                   description: Resource requirements for the task container
                   properties:
