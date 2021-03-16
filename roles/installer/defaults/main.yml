@@ -59,10 +59,10 @@ tower_image: quay.io/ansible/awx:execution-environments
 tower_image_pull_policy: IfNotPresent
 tower_ee_image: quay.io/ansible/awx-ee
 # Add image pull secrets to the deployment as a list
-# tower_image_pull_secret:
+# tower_image_pull_secrets:
 #  - secret1
 #  - secret2
-tower_image_pull_secret: ''
+tower_image_pull_secrets: ''
 
 tower_create_preload_data: true
 
