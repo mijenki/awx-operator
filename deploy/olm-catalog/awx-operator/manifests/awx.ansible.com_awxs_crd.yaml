@@ -57,17 +57,25 @@ spec:
               tower_image:
                 description: Registry path to the application container to use
                 type: string
-              tower_image_pull_policy:
-                default: IfNotPresent
-                description: The image pull policy
-                enum:
-                - Always
-                - always
-                - Never
-                - never
-                - IfNotPresent
-                - ifnotpresent
+              tower_ee_image:
+                description: Registry path to the execution environment container to use
                 type: string
+              tower_image_pull_policy:
+                description: The image pull policy
+                type: string
+                default: IfNotPresent
+                enum:
+                  - Always
+                  - always
+                  - Never
+                  - never
+                  - IfNotPresent
+                  - ifnotpresent
+              tower_image_pull_secrets:
+                description: Secret(s) where the private image repository credentials are stored
+                type: array
+                items:
+                  type: string
               tower_ingress_annotations:
                 description: Annotations to add to the ingress
                 type: string
