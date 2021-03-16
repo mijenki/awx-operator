@@ -18,6 +18,12 @@ spec:
         app: '{{ deployment_type }}'
     spec:
       serviceAccountName: '{{ meta.name }}'
+{% if tower_image_pull_secrets %}
+      imagePullSecrets:
+      {% for image_secret in tower_image_pull_secrets %}
+        - name: {{ image_secret }}
+      {% endfor %}
+{% endif %}
       containers:
         - image: '{{ tower_redis_image }}'
           name: redis
@@ -163,7 +169,7 @@ spec:
             {{ tower_task_extra_env | indent(width=12, indentfirst=True) }}
 {% endif %}
           resources: {{ tower_task_resource_requirements }}
-        - image: '{{ default_ee }}'
+        - image: '{{ tower_ee_image }}'
           name: '{{ meta.name }}-ee'
           imagePullPolicy: '{{ tower_image_pull_policy }}'
           args: ['receptor', '--config', '/etc/receptor.conf']
@@ -182,10 +188,6 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
-{% endif %}
-{% if tower_image_pull_secret %}
-      imagePullSecrets:
-        - name: {{ tower_image_pull_secret }}
 {% endif %}
       volumes:
 {% if tower_ingress_type | lower == 'route' and tower_route_tls_termination_mechanism | lower == 'passthrough' %}
