@@ -25,36 +25,3 @@ spec:
       secretName: {{ tower_ingress_tls_secret }}
 {% endif %}
 {% endif %}
-
-{% if 'route' == tower_ingress_type|lower %}
----
-apiVersion: route.openshift.io/v1
-kind: Route
-metadata:
-  name: '{{ meta.name }}'
-  namespace: '{{ meta.namespace }}'
-spec:
-{% if tower_route_host != '' %}
-  host: {{ tower_route_host }}
-{% endif %}
-  port:
-    targetPort: '{{ (tower_route_tls_termination_mechanism | lower == "passthrough") | ternary("https", "http") }}'
-  tls:
-    insecureEdgeTerminationPolicy: Redirect
-    termination: {{ tower_route_tls_termination_mechanism | lower }}
-{% if tower_route_tls_termination_mechanism | lower == 'edge' and tower_route_tls_secret != '' %}
-    key: |-
-{{ tower_route_tls_key | indent(width=6, indentfirst=True) }}
-    certificate: |-
-{{ tower_route_tls_crt | indent(width=6, indentfirst=True) }}
-{% if tower_route_ca_crt is defined %}
-    caCertificate: |-
-{{ tower_route_ca_crt | indent(width=6, indentfirst=True) }}
-{% endif %}
-{% endif %}
-  to:
-    kind: Service
-    name: {{ meta.name }}-service
-    weight: 100
-  wildcardPolicy: None
-{% endif %}
