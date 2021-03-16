@@ -20,9 +20,9 @@ spec:
       serviceAccountName: '{{ meta.name }}'
 {% if tower_image_pull_secrets %}
       imagePullSecrets:
-      {% for image_secret in tower_image_pull_secrets %}
+{% for image_secret in tower_image_pull_secrets %}
         - name: {{ image_secret }}
-      {% endfor %}
+{% endfor %}
 {% endif %}
       containers:
         - image: '{{ tower_redis_image }}'
