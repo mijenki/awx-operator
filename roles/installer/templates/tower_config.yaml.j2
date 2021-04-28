@@ -6,7 +6,10 @@ metadata:
   name: '{{ meta.name }}-{{ deployment_type }}-configmap'
   namespace: '{{ meta.namespace }}'
   labels:
-    app: '{{ deployment_type }}'
+    app.kubernetes.io/name: '{{ meta.name }}'
+    app.kubernetes.io/part-of: '{{ meta.name }}'
+    app.kubernetes.io/managed-by: '{{ deployment_type }}-operator'
+    app.kubernetes.io/component: '{{ deployment_type }}'
 data:
   environment: |
     AWX_SKIP_MIGRATIONS=true
@@ -218,6 +221,7 @@ data:
     - control-service:
         service: control
         filename: /var/run/receptor/receptor.sock
+        permissions: 0660
 
     - local-only:
 

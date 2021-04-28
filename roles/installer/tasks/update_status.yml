@@ -1,9 +1,4 @@
 ---
-- name: Set apiVersion and kind variables
-  set_fact:
-    api_version: '{{ hostvars["localhost"]["inventory_file"].split("/")[4:6] | join("/")  }}'
-    kind: '{{ hostvars["localhost"]["inventory_file"].split("/")[6]  }}'
-
 - name: Update admin password status
   operator_sdk.util.k8s_status:
     api_version: '{{ api_version }}'
@@ -68,3 +63,13 @@
           towerURL: "https://{{ route_url['resources'][0]['status']['ingress'][0]['host'] }}"
 
   when: tower_ingress_type | lower == 'route'
+
+- name: Update towerMigratedFromSecret status
+  operator_sdk.util.k8s_status:
+    api_version: '{{ api_version }}'
+    kind: "{{ kind }}"
+    name: "{{ meta.name }}"
+    namespace: "{{ meta.namespace }}"
+    status:
+      towerMigratedFromSecret: "{{ tower_migrated_from_secret }}"
+  when: tower_migrated_from_secret is defined

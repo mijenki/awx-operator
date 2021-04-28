@@ -56,6 +56,13 @@ rules:
     verbs:
       - update
   - apiGroups:
+      - apps
+    resources:
+      - deployments/scale
+      - statefulsets/scale
+    verbs:
+      - patch
+  - apiGroups:
       - ""
     resources:
       - pods/exec

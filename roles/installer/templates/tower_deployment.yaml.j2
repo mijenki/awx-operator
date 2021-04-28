@@ -6,16 +6,26 @@ metadata:
   name: '{{ meta.name }}'
   namespace: '{{ meta.namespace }}'
   labels:
-    app: '{{ deployment_type }}'
+    app.kubernetes.io/name: '{{ meta.name }}'
+    app.kubernetes.io/version: '{{ tower_image_version }}'
+    app.kubernetes.io/part-of: '{{ meta.name }}'
+    app.kubernetes.io/managed-by: '{{ deployment_type }}-operator'
+    app.kubernetes.io/component: '{{ deployment_type }}'
 spec:
   replicas: {{ tower_replicas }}
   selector:
     matchLabels:
-      app: '{{ deployment_type }}'
+      app.kubernetes.io/name: '{{ meta.name }}'
+      app.kubernetes.io/managed-by: '{{ deployment_type }}-operator'
+      app.kubernetes.io/component: '{{ deployment_type }}'
   template:
     metadata:
       labels:
-        app: '{{ deployment_type }}'
+        app.kubernetes.io/name: '{{ meta.name }}'
+        app.kubernetes.io/version: '{{ tower_image_version }}'
+        app.kubernetes.io/part-of: '{{ meta.name }}'
+        app.kubernetes.io/managed-by: '{{ deployment_type }}-operator'
+        app.kubernetes.io/component: '{{ deployment_type }}'
     spec:
       serviceAccountName: '{{ meta.name }}'
 {% if tower_image_pull_secrets %}
@@ -25,7 +35,8 @@ spec:
 {% endfor %}
 {% endif %}
       containers:
-        - image: '{{ tower_redis_image }}'
+        - image: '{{ tower_redis_image }}:{{ tower_redis_image_version }}'
+          imagePullPolicy: '{{ tower_image_pull_policy }}'
           name: redis
           args: ["redis-server", "/etc/redis.conf"]
           volumeMounts:
@@ -37,7 +48,7 @@ spec:
               mountPath: "/var/run/redis"
             - name: "{{ meta.name }}-redis-data"
               mountPath: "/data"
-        - image: '{{ tower_image }}'
+        - image: '{{ tower_image }}:{{ tower_image_version }}'
           name: '{{ meta.name }}-web'
 {% if tower_web_command %}
           command: {{ tower_web_command }}
@@ -53,11 +64,26 @@ spec:
 {% endif %}
           volumeMounts:
             - name: "{{ meta.name }}-application-credentials"
-              mountPath: "/etc/tower/conf.d/"
+              mountPath: "/etc/tower/conf.d/execution_environments.py"
+              subPath: execution_environments.py
+              readOnly: true
+            - name: "{{ meta.name }}-application-credentials"
+              mountPath: "/etc/tower/conf.d/credentials.py"
+              subPath: credentials.py
+              readOnly: true
+            - name: "{{ meta.name }}-application-credentials"
+              mountPath: "/etc/tower/conf.d/ldap.py"
+              subPath: ldap.py
               readOnly: true
 {% if tower_ingress_type | lower == 'route' and tower_route_tls_termination_mechanism | lower == 'passthrough' %}
             - name: "{{ meta.name }}-nginx-certs"
               mountPath: "/etc/nginx/pki"
+              readOnly: true
+{% endif %}
+{% if ldap_cacert_ca_crt %}
+            - name: "{{ meta.name }}-ldap-cacert"
+              mountPath: /etc/openldap/certs/ldap-ca.crt
+              subPath: ldap-ca.crt
               readOnly: true
 {% endif %}
             - name: "{{ secret_key_secret_name }}"
@@ -96,11 +122,11 @@ spec:
             - name: AWX_KUBE_DEVEL
               value: "1"
 {% endif %}
-{% if tower_task_extra_env %}
+{% if tower_web_extra_env -%}
             {{ tower_web_extra_env | indent(width=12, indentfirst=True) }}
 {% endif %}
           resources: {{ tower_web_resource_requirements }}
-        - image: '{{ tower_image }}'
+        - image: '{{ tower_image }}:{{ tower_image_version }}'
           name: '{{ meta.name }}-task'
           imagePullPolicy: '{{ tower_image_pull_policy }}'
 {% if tower_task_privileged == true %}
@@ -115,7 +141,16 @@ spec:
 {% endif %}
           volumeMounts:
             - name: "{{ meta.name }}-application-credentials"
-              mountPath: "/etc/tower/conf.d/"
+              mountPath: "/etc/tower/conf.d/execution_environments.py"
+              subPath: execution_environments.py
+              readOnly: true
+            - name: "{{ meta.name }}-application-credentials"
+              mountPath: "/etc/tower/conf.d/credentials.py"
+              subPath: credentials.py
+              readOnly: true
+            - name: "{{ meta.name }}-application-credentials"
+              mountPath: "/etc/tower/conf.d/ldap.py"
+              subPath: ldap.py
               readOnly: true
             - name: "{{ secret_key_secret_name }}"
               mountPath: /etc/tower/SECRET_KEY
@@ -146,7 +181,7 @@ spec:
 {% endif %}
           env:
             - name: SUPERVISOR_WEB_CONFIG_PATH
-              value: "/supervisor.conf"
+              value: "/etc/supervisord.conf"
             - name: AWX_SKIP_MIGRATIONS
               value: "1"
             - name: MY_POD_UID
@@ -169,7 +204,7 @@ spec:
             {{ tower_task_extra_env | indent(width=12, indentfirst=True) }}
 {% endif %}
           resources: {{ tower_task_resource_requirements }}
-        - image: '{{ tower_ee_image }}'
+        - image: '{{ tower_ee_images[0].image }}'
           name: '{{ meta.name }}-ee'
           imagePullPolicy: '{{ tower_image_pull_policy }}'
           args: ['receptor', '--config', '/etc/receptor.conf']
@@ -182,12 +217,23 @@ spec:
               mountPath: "/var/run/receptor"
             - name: "{{ meta.name }}-projects"
               mountPath: "/var/lib/awx/projects"
+{% if tower_ee_extra_volume_mounts -%}
+            {{ tower_ee_extra_volume_mounts | indent(width=12, indentfirst=True) }}
+{% endif %}
 {% if development_mode | bool %}
           env:
             - name: SDB_NOTIFY_HOST
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
+{% endif %}
+{% if tower_node_selector %}
+      nodeSelector:
+        {{ tower_node_selector | indent(width=8) }}
+{% endif %}
+{% if tower_tolerations %}
+      tolerations:
+        {{ tower_tolerations | indent(width=8) }}
 {% endif %}
       volumes:
 {% if tower_ingress_type | lower == 'route' and tower_route_tls_termination_mechanism | lower == 'passthrough' %}
@@ -200,14 +246,24 @@ spec:
               - key: tls.crt
                 path: 'web.crt'
 {% endif %}
+{% if ldap_cacert_ca_crt %}
+        - name: "{{ meta.name }}-ldap-cacert"
+          secret:
+            secretName: "{{ ldap_cacert_secret }}"
+            items:
+              - key: ldap-ca.crt
+                path: 'ldap-ca.crt'
+{% endif %}
         - name: "{{ meta.name }}-application-credentials"
           secret:
             secretName: "{{ meta.name }}-app-credentials"
             items:
-              - key: credentials_py
+              - key: credentials.py
                 path: 'credentials.py'
-              - key: environment_sh
-                path: 'environment.sh'
+              - key: ldap.py
+                path: 'ldap.py'
+              - key: execution_environments.py
+                path: 'execution_environments.py'
         - name: "{{ secret_key_secret_name }}"
           secret:
             secretName: '{{ secret_key_secret_name }}'
@@ -251,7 +307,16 @@ spec:
               - key: receptor_conf
                 path: receptor.conf
         - name: "{{ meta.name }}-projects"
+{% if tower_projects_persistence|bool %}
+          persistentVolumeClaim:
+{% if tower_projects_existing_claim %}
+            claimName: {{ tower_projects_existing_claim }}
+{% else %}
+            claimName: '{{ meta.name }}-projects-claim'
+{% endif %}
+{% else %}
           emptyDir: {}
+{% endif %}
 {% if development_mode | bool %}
         - name: awx-devel
           hostPath:

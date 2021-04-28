@@ -1,5 +1,10 @@
 ---
 deployment_type: awx
+kind: '{{ deployment_type | upper }}'
+api_version: '{{ deployment_type }}.ansible.com/v1beta1'
+
+database_name: "{{ deployment_type }}"
+database_username: "{{ deployment_type }}"
 
 tower_task_privileged: false
 tower_ingress_type: none
@@ -14,6 +19,9 @@ tower_ingress_annotations: ''
 # process like cert-manager (enabled via annotations) will store the TLS
 # certificate and key.
 tower_ingress_tls_secret: ''
+
+tower_loadbalancer_protocol: 'http'
+tower_loadbalancer_port: '80'
 
 # The TLS termination mechanism to use to access
 # the services. Supported mechanism are: edge, passthrough
@@ -32,6 +40,22 @@ tower_route_host: ''
 
 tower_hostname: '{{ deployment_type }}.example.com'
 
+# Add a nodeSelector for the AWX pods. It must match a node's labels for the pod
+# to be scheduled on that node. Specify as literal block. E.g.:
+# tower_node_selector: |
+#   disktype: ssd
+#   kubernetes.io/arch: amd64
+#   kubernetes.io/os: linux
+tower_node_selector: ''
+
+# Add node tolerations for the AWX pods. Specify as literal block. E.g.:
+# tower_tolerations: |
+#   - key: "dedicated"
+#     operator: "Equal"
+#     value: "AWX"
+#     effect: "NoSchedule"
+tower_tolerations: ''
+
 tower_admin_user: admin
 tower_admin_email: test@example.com
 
@@ -47,6 +71,10 @@ tower_broadcast_websocket_secret: ''
 #
 tower_secret_key_secret: ''
 
+# Secret to lookup that provides old database credentials (for migration)
+
+tower_old_postgres_configuration_secret: ''
+
 # Add extra volumes to the AWX pod. Specify as literal block. E.g.:
 # tower_extra_volumes: |
 #   - name: my-volume
@@ -55,14 +83,23 @@ tower_extra_volumes: ''
 
 # Use these image versions for Ansible AWX.
 
-tower_image: quay.io/ansible/awx:execution-environments
+tower_image: quay.io/ansible/awx
+tower_image_version: 19.0.0
+tower_redis_image: docker.io/redis
+tower_redis_image_version: latest
+tower_postgres_image: postgres
+tower_postgres_image_version: 12
 tower_image_pull_policy: IfNotPresent
-tower_ee_image: quay.io/ansible/awx-ee
 # Add image pull secrets to the deployment as a list
 # tower_image_pull_secrets:
 #  - secret1
 #  - secret2
 tower_image_pull_secrets: ''
+tower_image_pull_secret: ''
+
+tower_ee_images:
+  - name: AWX EE 0.2.0
+    image: quay.io/ansible/awx-ee:0.2.0
 
 tower_create_preload_data: true
 
@@ -101,20 +138,53 @@ tower_web_extra_env: ''
 #     mountPath: /some/path
 tower_task_extra_volume_mounts: ''
 tower_web_extra_volume_mounts: ''
+tower_ee_extra_volume_mounts: ''
 
-tower_redis_image: redis:latest
+# Add a nodeSelector for the Postgres pods.
+# It must match a node's labels for the pod to be scheduled on that node.
+# Specify as literal block. E.g.:
+# tower_postgres_selector: |
+#   disktype: ssd
+#   kubernetes.io/arch: amd64
+#   kubernetes.io/os: linux
+tower_postgres_selector: ''
 
-tower_postgres_image: postgres:12
-tower_postgres_resource_requirements:
+# Add node tolerations for the Postgres pods.
+# Specify as literal block. E.g.:
+# tower_postgres_tolerations: |
+#   - key: "dedicated"
+#     operator: "Equal"
+#     value: "AWX"
+#     effect: "NoSchedule"
+tower_postgres_tolerations: ''
+tower_postgres_storage_requirements:
   requests:
     storage: 8Gi
+tower_postgres_resource_requirements: {}
 tower_postgres_storage_class: ''
 tower_postgres_data_path: '/var/lib/postgresql/data/pgdata'
+
+# Persistence to the AWX project data folder
+# Whether or not the /var/lib/projects directory will be persistent
+tower_projects_persistence: false
+#
+# Define an existing PersistentVolumeClaim to use
+tower_projects_existing_claim: ''
+#
+# Define the storage_class, size and access_mode
+# when not using an existing claim
+tower_projects_storage_class: ''
+tower_projects_storage_size: 8Gi
+tower_projects_storage_access_mode: ReadWriteMany
 
 # Secret to lookup that provide the PostgreSQL configuration
 #
 tower_postgres_configuration_secret: ''
 
 ca_trust_bundle: "/etc/pki/tls/certs/ca-bundle.crt"
+
+# Secret to lookup that provides the LDAP CACert trusted bundle
+#
+ldap_cacert_secret: ''
 
 development_mode: false

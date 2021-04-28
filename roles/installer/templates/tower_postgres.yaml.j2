@@ -1,16 +1,21 @@
 # Postgres StatefulSet.
 ---
-apiVersion: v1
+apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: '{{ meta.name }}-postgres'
   namespace: '{{ meta.namespace }}'
   labels:
-    app: '{{ deployment_type }}-postgres'
+    app.kubernetes.io/name: '{{ meta.name }}-postgres'
+    app.kubernetes.io/part-of: '{{ meta.name }}'
+    app.kubernetes.io/managed-by: '{{ deployment_type }}-operator'
+    app.kubernetes.io/component: database
 spec:
   selector:
     matchLabels:
-      app: '{{ deployment_type }}-postgres'
+      app.kubernetes.io/name: '{{ meta.name }}-postgres'
+      app.kubernetes.io/managed-by: '{{ deployment_type }}-operator'
+      app.kubernetes.io/component: database
   serviceName: '{{ meta.name }}'
   replicas: 1
   updateStrategy:
@@ -18,10 +23,13 @@ spec:
   template:
     metadata:
       labels:
-        app: '{{ deployment_type }}-postgres'
+        app.kubernetes.io/name: '{{ meta.name }}-postgres'
+        app.kubernetes.io/part-of: '{{ meta.name }}'
+        app.kubernetes.io/managed-by: '{{ deployment_type }}-operator'
+        app.kubernetes.io/component: database
     spec:
       containers:
-        - image: '{{ tower_postgres_image }}'
+        - image: '{{ tower_postgres_image }}:{{ tower_postgres_image_version }}'
           name: postgres
           env:
             - name: POSTGRES_DB
@@ -41,6 +49,10 @@ spec:
                   key: password
             - name: PGDATA
               value: '{{ tower_postgres_data_path }}'
+            - name: POSTGRES_INITDB_ARGS
+              value: '{{ postgres_initdb_args }}'
+            - name: POSTGRES_HOST_AUTH_METHOD
+              value: '{{ postgres_host_auth_method }}'
           ports:
             - containerPort: 5432
               name: postgres
@@ -48,6 +60,15 @@ spec:
             - name: postgres
               mountPath: '{{ tower_postgres_data_path | dirname }}'
               subPath: '{{ tower_postgres_data_path | dirname | basename }}'
+          resources: {{ tower_postgres_resource_requirements }}
+{% if tower_postgres_selector %}
+      nodeSelector:
+        {{ tower_postgres_selector | indent(width=8) }}
+{% endif %}
+{% if tower_postgres_tolerations %}
+      tolerations:
+        {{ tower_postgres_tolerations | indent(width=8) }}
+{% endif %}
   volumeClaimTemplates:
     - metadata:
         name: postgres
@@ -57,7 +78,7 @@ spec:
 {% if tower_postgres_storage_class != '' %}
         storageClassName: '{{ tower_postgres_storage_class }}'
 {% endif %}
-        resources: {{ tower_postgres_resource_requirements }}
+        resources: {{ tower_postgres_storage_requirements }}
 
 # Postgres Service.
 ---
@@ -67,10 +88,15 @@ metadata:
   name: '{{ meta.name }}-postgres'
   namespace: '{{ meta.namespace }}'
   labels:
-    app: '{{ deployment_type }}-postgres'
+    app.kubernetes.io/name: '{{ meta.name }}-postgres'
+    app.kubernetes.io/part-of: '{{ meta.name }}'
+    app.kubernetes.io/managed-by: '{{ deployment_type }}-operator'
+    app.kubernetes.io/component: database
 spec:
   ports:
     - port: 5432
   clusterIP: None
   selector:
-    app: '{{ deployment_type }}-postgres'
+    app.kubernetes.io/name: '{{ meta.name }}-postgres'
+    app.kubernetes.io/managed-by: '{{ deployment_type }}-operator'
+    app.kubernetes.io/component: database

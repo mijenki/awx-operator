@@ -1,6 +1,28 @@
 ---
+- name: Patching labels to AWX kind
+  k8s:
+    state: present
+    definition:
+      apiVersion: '{{ api_version }}'
+      kind: '{{ kind }}'
+      name: '{{ meta.name }}'
+      namespace: '{{ meta.namespace }}'
+      metadata:
+        name: '{{ meta.name }}'
+        namespace: '{{ meta.namespace }}'
+        labels:
+          app.kubernetes.io/name: '{{ meta.name }}'
+          app.kubernetes.io/part-of: '{{ meta.name }}'
+          app.kubernetes.io/managed-by: '{{ deployment_type }}-operator'
+          app.kubernetes.io/component: '{{ deployment_type }}'
+
 - name: Include secret key configuration tasks
   include_tasks: secret_key_configuration.yml
+
+- name: Load LDAP CAcert certificate
+  include_tasks: load_ldap_cacert_secret.yml
+  when:
+    - ldap_cacert_secret != ''
 
 - name: Include admin password configuration tasks
   include_tasks: admin_password_configuration.yml
@@ -17,72 +39,33 @@
     - tower_ingress_type | lower == 'route'
     - tower_route_tls_secret != ''
 
-- name: Ensure configured instance resources exist in the cluster.
-  k8s:
-    apply: yes
-    definition: "{{ lookup('template', item) | from_yaml_all | list }}"
-  register: k8s_defs_result
-  with_items:
-    - tower_config.yaml.j2
+- name: Include resources configuration tasks
+  include_tasks: resources_configuration.yml
 
-- name: Apply Resources
-  k8s:
-    apply: yes
-    definition: "{{ lookup('template', item + '.yaml.j2') }}"
-  register: tower_deployment_result
-  loop:
-    - 'tower_app_credentials'
-    - 'tower_service_account'
-    - 'tower_deployment'
-    - 'tower_service'
-    - 'tower_ingress'
-
-- name: Get the resource pod information.
-  k8s_info:
-    kind: Pod
-    namespace: '{{ meta.namespace }}'
-    label_selectors:
-      - "app={{ deployment_type }}"
-  register: tower_pods
-  until: "tower_pods['resources'][0]['status']['phase'] == 'Running'"
-  delay: 5
-  retries: 60
-
-- name: Set the resource pod name as a variable.
-  set_fact:
-    tower_pod_name: "{{ tower_pods['resources'][0]['metadata']['name'] }}"
-
-- name: Verify the resource pod name is populated.
-  assert:
-    that: tower_pod_name != ''
-    fail_msg: "Could not find the tower pod's name."
-
-- name: Check if database is populated (auth_user table exists).
-  community.kubernetes.k8s_exec:
+- name: Check for pending migrations
+  k8s_exec:
     namespace: "{{ meta.namespace }}"
     pod: "{{ tower_pod_name }}"
     container: "{{ meta.name }}-task"
     command: >-
-      bash -c "echo 'from django.db import connection;
-      tbl = \"auth_user\" in connection.introspection.table_names();
-      exit(0 if tbl else 1)'
-      | awx-manage shell"
-  ignore_errors: true
+      bash -c "awx-manage showmigrations | grep -v '[X]' | grep '[ ]' | wc -l"
   changed_when: false
   register: database_check
-  when: k8s_defs_result is not changed
 
 - name: Migrate the database if the K8s resources were updated.  # noqa 305
-  community.kubernetes.k8s_exec:
+  k8s_exec:
     namespace: "{{ meta.namespace }}"
     pod: "{{ tower_pod_name }}"
     container: "{{ meta.name }}-task"
     command: >-
       bash -c "awx-manage migrate --noinput"
   register: migrate_result
-  when: (k8s_defs_result is changed) or (database_check is defined and database_check.return_code != 0)
+  when:
+    - database_check is defined
+    - (database_check.stdout|trim) != '0'
 
-- include_tasks: initialize.yml
+- name: Initialize Django
+  include_tasks: initialize_django.yml
 
 - name: Update status variables
   include_tasks: update_status.yml

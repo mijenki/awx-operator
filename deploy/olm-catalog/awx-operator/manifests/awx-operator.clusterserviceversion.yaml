@@ -12,39 +12,8 @@ metadata:
             "namespace": "example-awx"
           },
           "spec": {
-            "tower_admin_email": "test@example.com",
-            "tower_admin_user": "test",
-            "tower_broadcast_websocket_secret": "changeme",
-            "tower_create_preload_data": true,
-            "tower_hostname": "example-awx.test",
-            "tower_image": "quay.io/ansible/awx:execution-environments",
-            "tower_ingress_type": "none",
-            "tower_memcached_image": "memcached:alpine",
-            "tower_postgres_storage_class": "",
-            "tower_redis_image": "redis:latest",
-            "tower_task_privileged": false
-          }
-        },
-        {
-          "apiVersion": "awx.ansible.com/v1beta1",
-          "kind": "AWX",
-          "metadata": {
-            "name": "example-awx",
-            "namespace": "example-awx"
-          },
-          "spec": {
             "deployment_type": "awx",
-            "tower_admin_email": "test@example.com",
-            "tower_broadcast_websocket_secret": "changeme",
-            "tower_create_preload_data": true,
-            "tower_image": "quay.io/ansible/awx:execution-environments",
             "tower_ingress_type": "ingress",
-            "tower_memcached_image": "memcached:alpine",
-            "tower_postgres_image": "postgres:12",
-            "tower_postgres_pass": "awxpass",
-            "tower_postgres_storage_class": "",
-            "tower_redis_image": "redis:latest",
-            "tower_task_privileged": false,
             "tower_task_resource_requirements": {
               "requests": {
                 "cpu": "500m",
@@ -70,6 +39,7 @@ spec:
   customresourcedefinitions:
     owned:
     - description: A AWX Instance
+      displayName: AWX
       kind: AWX
       name: awxs.awx.ansible.com
       specDescriptors:
@@ -98,6 +68,11 @@ spec:
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:advanced
         - urn:alm:descriptor:io.kubernetes:Secret
+      - displayName: Old Database configuration secret
+        path: tower_old_postgres_configuration_secret
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+        - urn:alm:descriptor:io.kubernetes:Secret
       - displayName: Secret key secret
         path: tower_secret_key_secret
         x-descriptors:
@@ -115,6 +90,8 @@ spec:
         - urn:alm:descriptor:com.tectonic.ui:select:none
         - urn:alm:descriptor:com.tectonic.ui:select:Ingress
         - urn:alm:descriptor:com.tectonic.ui:select:Route
+        - urn:alm:descriptor:com.tectonic.ui:select:LoadBalancer
+        - urn:alm:descriptor:com.tectonic.ui:select:NodePort
       - displayName: Tower Ingress Annotations
         path: tower_ingress_annotations
         x-descriptors:
@@ -127,6 +104,25 @@ spec:
         - urn:alm:descriptor:com.tectonic.ui:advanced
         - urn:alm:descriptor:io.kubernetes:Secret
         - urn:alm:descriptor:com.tectonic.ui:fieldDependency:tower_ingress_type:Ingress
+      - displayName: Tower LoadBalancer Annotations
+        path: tower_loadbalancer_annotations
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+        - urn:alm:descriptor:com.tectonic.ui:text
+        - urn:alm:descriptor:com.tectonic.ui:fieldDependency:tower_ingress_type:LoadBalancer
+      - displayName: Tower LoadBalancer Protocol
+        path: tower_loadbalancer_protocol
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+        - urn:alm:descriptor:com.tectonic.ui:select:http
+        - urn:alm:descriptor:com.tectonic.ui:select:https
+        - urn:alm:descriptor:com.tectonic.ui:fieldDependency:tower_ingress_type:LoadBalancer
+      - displayName: Tower LoadBalancer Port
+        path: tower_loadbalancer_port
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+        - urn:alm:descriptor:com.tectonic.ui:number
+        - urn:alm:descriptor:com.tectonic.ui:fieldDependency:tower_ingress_type:LoadBalancer
       - displayName: Route DNS host
         path: tower_route_host
         x-descriptors:
@@ -151,6 +147,11 @@ spec:
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:advanced
         - urn:alm:descriptor:com.tectonic.ui:imagePullPolicy
+      - displayName: Image Pull Secret
+        path: tower_image_pull_secret
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+        - urn:alm:descriptor:com.tectonic.ui:imagePullSecret
       - displayName: Web container resource requirements
         path: tower_web_resource_requirements
         x-descriptors:
@@ -161,9 +162,13 @@ spec:
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:advanced
         - urn:alm:descriptor:com.tectonic.ui:resourceRequirements
-      - displayName: PostgreSQL container resource requirements (when using a managed
-          instance)
+      - displayName: PostgreSQL container resource requirements (when using a managed instance)
         path: tower_postgres_resource_requirements
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+        - urn:alm:descriptor:com.tectonic.ui:resourceRequirements
+      - displayName: PostgreSQL container storage requirements (when using a managed instance)
+        path: tower_postgres_storage_requirements
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:advanced
         - urn:alm:descriptor:com.tectonic.ui:resourceRequirements
@@ -182,8 +187,30 @@ spec:
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:advanced
         - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
+      - displayName: Deploy the instance in development mode ?
+        path: development_mode
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
+        - urn:alm:descriptor:com.tectonic.ui:hidden
+      - displayName: Should Tower Task container deployed with privileged level ?
+        path: tower_task_privileged
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
+        - urn:alm:descriptor:com.tectonic.ui:hidden
       - displayName: Deployment Type
         path: deployment_type
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+        - urn:alm:descriptor:com.tectonic.ui:hidden
+      - displayName: Deployment Kind
+        path: kind
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+        - urn:alm:descriptor:com.tectonic.ui:hidden
+      - displayName: Deployment apiVersion
+        path: api_version
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:advanced
         - urn:alm:descriptor:com.tectonic.ui:hidden
@@ -192,13 +219,164 @@ spec:
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:advanced
         - urn:alm:descriptor:com.tectonic.ui:hidden
+      - displayName: Tower Image Version
+        path: tower_image_version
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+        - urn:alm:descriptor:com.tectonic.ui:hidden
+      - displayName: Redis Image
+        path: tower_redis_image
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+        - urn:alm:descriptor:com.tectonic.ui:hidden
+      - displayName: Redis Image Version
+        path: tower_redis_image_version
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+        - urn:alm:descriptor:com.tectonic.ui:hidden
+      - displayName: PostgreSQL Image
+        path: tower_postgres_image
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+        - urn:alm:descriptor:com.tectonic.ui:hidden
+      - displayName: PostgreSQL Image Version
+        path: tower_postgres_image_version
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+        - urn:alm:descriptor:com.tectonic.ui:hidden
+      - displayName: Tower Postgres Selector
+        path: tower_postgres_selector
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+        - urn:alm:descriptor:com.tectonic.ui:hidden
+      - displayName: Tower Postgres Tolerations
+        path: tower_postgres_tolerations
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+        - urn:alm:descriptor:com.tectonic.ui:hidden
       - displayName: Tower Postgres Storage Class
         path: tower_postgres_storage_class
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:advanced
         - urn:alm:descriptor:com.tectonic.ui:hidden
+      - displayName: Tower Postgres Datapath
+        path: tower_postgres_data_path
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+        - urn:alm:descriptor:com.tectonic.ui:hidden
       - displayName: Certificate Authorirty Trust Bundle
         path: ca_trust_bundle
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+        - urn:alm:descriptor:com.tectonic.ui:hidden
+      - displayName: LDAP Certificate Authority Trust Bundle
+        path: ldap_cacert_secret
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+        - urn:alm:descriptor:io.kubernetes:Secret
+      - displayName: Tower Task Args
+        path: tower_task_args
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+        - urn:alm:descriptor:com.tectonic.ui:hidden
+      - displayName: Enable persistence for /var/lib/projects directory?
+        path: tower_projects_persistence
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
+      - displayName: Use existing Persistent Claim?
+        path: tower_projects_use_existing_claim
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+        - urn:alm:descriptor:com.tectonic.ui:select:_Yes_
+        - urn:alm:descriptor:com.tectonic.ui:select:_No_
+        - urn:alm:descriptor:com.tectonic.ui:fieldDependency:tower_projects_persistence:true
+      - displayName: Tower Projects Existing Persistent Claim
+        path: tower_projects_existing_claim
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+        - urn:alm:descriptor:com.tectonic.ui:fieldDependency:tower_projects_use_existing_claim:_Yes_
+        - urn:alm:descriptor:io.kubernetes:PersistentVolumeClaim
+      - description: Tower Projects Storage Class Name. If not present, the default
+          storage class will be used.
+        displayName: Tower Projects Storage Class Name
+        path: tower_projects_storage_class
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+        - urn:alm:descriptor:com.tectonic.ui:fieldDependency:tower_projects_use_existing_claim:_No_
+        - urn:alm:descriptor:com.tectonic.ui:text
+      - description: Tower Projects Storage Size
+        displayName: Tower Projects Storage Size
+        path: tower_projects_storage_size
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+        - urn:alm:descriptor:com.tectonic.ui:fieldDependency:tower_projects_use_existing_claim:_No_
+        - urn:alm:descriptor:com.tectonic.ui:text
+      - description: Tower Projects Storage Access Mode
+        displayName: Tower Projects Storage Access Mode
+        path: tower_projects_storage_access_mode
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+        - urn:alm:descriptor:com.tectonic.ui:fieldDependency:tower_projects_use_existing_claim:_No_
+        - urn:alm:descriptor:com.tectonic.ui:text
+      - displayName: Tower Task Command
+        path: tower_task_command
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+        - urn:alm:descriptor:com.tectonic.ui:hidden
+      - displayName: Tower Task Extra Env
+        description: Environment variables to be added to Task container
+        path: tower_task_extra_env
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+        - urn:alm:descriptor:com.tectonic.ui:hidden
+      - displayName: 
+        path: tower_ee_extra_volume_mounts
+        description: Specify volume mounts to be added to Execution container
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+        - urn:alm:descriptor:com.tectonic.ui:hidden
+      - displayName: Tower Task Extra Volume Mounts
+        description: Specify volume mounts to be added to Task container
+        path: tower_task_extra_volume_mounts
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+        - urn:alm:descriptor:com.tectonic.ui:hidden
+      - displayName: Tower Web Args
+        path: tower_web_args
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+        - urn:alm:descriptor:com.tectonic.ui:hidden
+      - displayName: Tower Web Command
+        path: tower_web_command
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+        - urn:alm:descriptor:com.tectonic.ui:hidden
+      - displayName: Tower Web Extra Env
+        description: Environment variables to be added to Web container
+        path: tower_web_extra_env
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+        - urn:alm:descriptor:com.tectonic.ui:hidden
+      - displayName: Tower Web Extra Volume Mounts
+        description: Specify volume mounts to be added to Web container
+        path: tower_web_extra_volume_mounts
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+        - urn:alm:descriptor:com.tectonic.ui:hidden
+      - displayName: Tower Extra Volumes
+        description: Specify extra volumes to add to the application pod
+        path: tower_extra_volumes
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+        - urn:alm:descriptor:com.tectonic.ui:hidden
+      - displayName: Tower Node Selector
+        path: tower_node_selector
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+        - urn:alm:descriptor:com.tectonic.ui:hidden
+      - displayName: Tower Tolerations
+        path: tower_tolerations
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:advanced
         - urn:alm:descriptor:com.tectonic.ui:hidden
@@ -289,6 +467,13 @@ spec:
           verbs:
           - update
         - apiGroups:
+          - apps
+          resources:
+          - deployments/scale
+          - statefulsets/scale
+          verbs:
+          - patch
+        - apiGroups:
           - ""
           resources:
           - pods/exec
@@ -335,14 +520,14 @@ spec:
                   value: awx-operator
                 - name: ANSIBLE_GATHERING
                   value: explicit
-                image: quay.io/ansible/awx-operator:0.6.0
+                image: quay.io/ansible/awx-operator:0.8.0
                 imagePullPolicy: Always
                 livenessProbe:
                   httpGet:
                     path: /healthz
                     port: 6789
-                  initialDelaySeconds: 5
-                  periodSeconds: 3
+                  initialDelaySeconds: 15
+                  periodSeconds: 20
                 name: awx-operator
                 resources: {}
                 volumeMounts:
