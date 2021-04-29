@@ -26,9 +26,6 @@ spec:
         app.kubernetes.io/part-of: '{{ meta.name }}'
         app.kubernetes.io/managed-by: '{{ deployment_type }}-operator'
         app.kubernetes.io/component: '{{ deployment_type }}'
-{% if dnsConfig %}
-    dnsConfig: {{ dnsConfig }}
-{% endif %}
     spec:
       serviceAccountName: '{{ meta.name }}'
 {% if tower_image_pull_secrets %}
@@ -36,6 +33,9 @@ spec:
 {% for image_secret in tower_image_pull_secrets %}
         - name: {{ image_secret }}
 {% endfor %}
+{% endif %}
+{% if dnsConfig %}
+      dnsConfig: {{ dnsConfig }}
 {% endif %}
       containers:
         - image: '{{ tower_redis_image }}:{{ tower_redis_image_version }}'
