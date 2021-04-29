@@ -37,6 +37,14 @@ spec:
               development_mode:
                 description: If the deployment should be done in development mode
                 type: boolean
+              dnsConfig:
+                  description: Definition of the dnsConfig for the deployment.
+                  type: object
+                  properties:
+                    searches:
+                      type: array
+                      items:
+                        type: string
               ldap_cacert_secret:
                 description: Secret where can be found the LDAP trusted Certificate
                   Authority Bundle

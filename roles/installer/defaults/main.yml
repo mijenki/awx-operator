@@ -6,6 +6,8 @@ api_version: '{{ deployment_type }}.ansible.com/v1beta1'
 database_name: "{{ deployment_type }}"
 database_username: "{{ deployment_type }}"
 
+dnsConfig: ''
+
 tower_task_privileged: false
 tower_ingress_type: none
 

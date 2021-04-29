@@ -35,6 +35,14 @@ spec:
                   description: apiVersion of the deployment type
                   type: string
                   default: awx.ansible.com/v1beta1
+                dnsConfig:
+                  description: Definition of the dnsConfig for the deployment.
+                  type: object
+                  properties:
+                    searches:
+                      type: array
+                      items:
+                        type: string
                 tower_task_privileged:
                   description: If a privileged security context should be enabled
                   type: boolean

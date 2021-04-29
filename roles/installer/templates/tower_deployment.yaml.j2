@@ -12,6 +12,9 @@ metadata:
     app.kubernetes.io/managed-by: '{{ deployment_type }}-operator'
     app.kubernetes.io/component: '{{ deployment_type }}'
 spec:
+{% if dnsConfig %}
+  dnsConfig: {{ dnsConfig }}
+{% endif %}
   replicas: {{ tower_replicas }}
   selector:
     matchLabels:
