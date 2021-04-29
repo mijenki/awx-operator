@@ -12,9 +12,6 @@ metadata:
     app.kubernetes.io/managed-by: '{{ deployment_type }}-operator'
     app.kubernetes.io/component: '{{ deployment_type }}'
 spec:
-{% if dnsConfig %}
-  dnsConfig: {{ dnsConfig }}
-{% endif %}
   replicas: {{ tower_replicas }}
   selector:
     matchLabels:
@@ -29,6 +26,9 @@ spec:
         app.kubernetes.io/part-of: '{{ meta.name }}'
         app.kubernetes.io/managed-by: '{{ deployment_type }}-operator'
         app.kubernetes.io/component: '{{ deployment_type }}'
+{% if dnsConfig %}
+    dnsConfig: {{ dnsConfig }}
+{% endif %}
     spec:
       serviceAccountName: '{{ meta.name }}'
 {% if tower_image_pull_secrets %}
