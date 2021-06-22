@@ -14,8 +14,8 @@ An [Ansible AWX](https://github.com/ansible/awx) operator for Kubernetes built w
       * [Basic Install](#basic-install)
       * [Admin user account configuration](#admin-user-account-configuration)
       * [Network and TLS Configuration](#network-and-tls-configuration)
+         * [Service Type](#service-type)
          * [Ingress Type](#ingress-type)
-         * [TLS Termination](#tls-termination)
       * [Database Configuration](#database-configuration)
          * [External PostgreSQL Service](#external-postgresql-service)
          * [Migrating data from an old AWX instance](#migrating-data-from-an-old-awx-instance)
@@ -28,14 +28,14 @@ An [Ansible AWX](https://github.com/ansible/awx) operator for Kubernetes built w
          * [Persisting Projects Directory](#persisting-projects-directory)
          * [Custom Volume and Volume Mount Options](#custom-volume-and-volume-mount-options)
          * [Exporting Environment Variables to Containers](#exporting-environment-variables-to-containers)
-   * [Development](#development)
-      * [Testing](#testing)
-         * [Testing in Docker](#testing-in-docker)
-         * [Testing in Minikube](#testing-in-minikube)
-      * [Generating a bundle](#generating-a-bundle)
+         * [Extra Settings](#extra-settings)
+         * [Service Account](#service-account)
+   * [Upgrading](#upgrading)
+   * [Contributing](#contributing)
    * [Release Process](#release-process)
-      * [Build a new release](#build-a-new-release)
-      * [Build a new version of the operator yaml file](#build-a-new-version-of-the-operator-yaml-file)
+      * [Verifiy Functionality](#verify-functionality)
+      * [Update Version](#update-version)
+      * [Commit / Create Release](#commit--create-release)
    * [Author](#author)
 <!--te-->
 
@@ -43,7 +43,7 @@ An [Ansible AWX](https://github.com/ansible/awx) operator for Kubernetes built w
 
 This operator is meant to provide a more Kubernetes-native installation method for AWX via an AWX Custom Resource Definition (CRD).
 
-Note that the operator is not supported by Red Hat, and is in **alpha** status. For now, use it at your own risk!
+> :warning: The operator is not supported by Red Hat, and is in **alpha** status. For now, use it at your own risk!
 
 ## Usage
 
@@ -51,40 +51,117 @@ Note that the operator is not supported by Red Hat, and is in **alpha** status. 
 
 This Kubernetes Operator is meant to be deployed in your Kubernetes cluster(s) and can manage one or more AWX instances in any namespace.
 
-First, you need to deploy AWX Operator into your cluster. Start by going to https://github.com/ansible/awx-operator/releases and making note of the latest release.
-
-Replace `<tag>` in the URL below with the version you are deploying:
+For testing purposes, the `awx-operator` can be deployed on a [Minikube](https://minikube.sigs.k8s.io/docs/) cluster. Due to different OS and hardware environments, please refer to the official Minikube documentation for further information.
 
 ```bash
-#> kubectl apply -f https://raw.githubusercontent.com/ansible/awx-operator/<tag>/deploy/awx-operator.yaml
+$ minikube start --addons=ingress --cpus=4 --cni=flannel --install-addons=true \
+    --kubernetes-version=stable --memory=6g
+😄  minikube v1.20.0 on Fedora 34
+✨  Using the kvm2 driver based on user configuration
+👍  Starting control plane node minikube in cluster minikube
+🔥  Creating kvm2 VM (CPUs=4, Memory=6144MB, Disk=20000MB) ...
+🐳  Preparing Kubernetes v1.20.2 on Docker 20.10.6 ...
+    ▪ Generating certificates and keys ...
+    ▪ Booting up control plane ...
+    ▪ Configuring RBAC rules ...
+🔗  Configuring Flannel (Container Networking Interface) ...
+🔎  Verifying Kubernetes components...
+    ▪ Using image docker.io/jettech/kube-webhook-certgen:v1.5.1
+    ▪ Using image k8s.gcr.io/ingress-nginx/controller:v0.44.0
+    ▪ Using image gcr.io/k8s-minikube/storage-provisioner:v5
+    ▪ Using image docker.io/jettech/kube-webhook-certgen:v1.5.1
+🔎  Verifying ingress addon...
+🌟  Enabled addons: storage-provisioner, default-storageclass, ingress
+🏄  Done! kubectl is now configured to use "minikube" cluster and "default" namespace by default
 ```
 
-Then create a file named `my-awx.yml` with the following contents:
+Once Minikube is deployed, check if the node(s) and `kube-apiserver` communication is working as expected.
+
+```bash
+$ kubectl get nodes
+NAME       STATUS   ROLES                  AGE     VERSION
+minikube   Ready    control-plane,master   6m28s   v1.20.2
+
+$ kubectl get pods -A
+NAMESPACE       NAME                                        READY   STATUS      RESTARTS   AGE
+ingress-nginx   ingress-nginx-admission-create-tjk94        0/1     Completed   0          6m4s
+ingress-nginx   ingress-nginx-admission-patch-r4pl6         0/1     Completed   0          6m4s
+ingress-nginx   ingress-nginx-controller-5d88495688-sbtp9   1/1     Running     0          6m4s
+kube-system     coredns-74ff55c5b-2wz6n                     1/1     Running     0          6m4s
+kube-system     etcd-minikube                               1/1     Running     0          6m13s
+kube-system     kube-apiserver-minikube                     1/1     Running     0          6m13s
+kube-system     kube-controller-manager-minikube            1/1     Running     0          6m13s
+kube-system     kube-flannel-ds-amd64-lw7lv                 1/1     Running     0          6m3s
+kube-system     kube-proxy-lcxx7                            1/1     Running     0          6m3s
+kube-system     kube-scheduler-minikube                     1/1     Running     0          6m13s
+kube-system     storage-provisioner                         1/1     Running     1          6m17s
+```
+
+Now you need to deploy AWX Operator into your cluster. Start by going to https://github.com/ansible/awx-operator/releases and making note of the latest release. Replace `<TAG>` in the URL `https://raw.githubusercontent.com/ansible/awx-operator/<TAG>/deploy/awx-operator.yaml` with the version you are deploying.
+
+```bash
+$ kubectl apply -f https://raw.githubusercontent.com/ansible/awx-operator/<TAG>/deploy/awx-operator.yaml
+customresourcedefinition.apiextensions.k8s.io/awxs.awx.ansible.com created
+customresourcedefinition.apiextensions.k8s.io/awxbackups.awx.ansible.com created
+customresourcedefinition.apiextensions.k8s.io/awxrestores.awx.ansible.com created
+clusterrole.rbac.authorization.k8s.io/awx-operator created
+clusterrolebinding.rbac.authorization.k8s.io/awx-operator created
+serviceaccount/awx-operator created
+deployment.apps/awx-operator created
+```
+
+Wait a few minutes and you should have the `awx-operator` running.
+
+```bash
+$ kubectl get pods
+NAME                            READY   STATUS    RESTARTS   AGE
+awx-operator-7dbf9db9d7-z9hqx   1/1     Running   0          50s
+```
+
+Then create a file named `awx-demo.yml` with the suggested content. The `metadata.name` you provide, will be the name of the resulting AWX deployment.  If you deploy more than one AWX instance to the same namespace, be sure to use unique names.
 
 ```yaml
 ---
 apiVersion: awx.ansible.com/v1beta1
 kind: AWX
 metadata:
-  name: awx
+  name: awx-demo
+spec:
+  service_type: nodeport
+  ingress_type: none
+  hostname: awx-demo.example.com
 ```
-
-> The metadata.name you provide, will be the name of the resulting AWX deployment.  If you deploy more than one to the same namespace, be sure to use unique names.
 
 Finally, use `kubectl` to create the awx instance in your cluster:
 
 ```bash
-#> kubectl apply -f my-awx.yml
+$ kubectl apply -f awx-demo.yml
+awx.awx.ansible.com/awx-demo created
 ```
 
 After a few minutes, the new AWX instance will be deployed. One can look at the operator pod logs in order to know where the installation process is at. This can be done by running the following command: `kubectl logs -f deployments/awx-operator`.
 
-Once deployed, the AWX instance will be accessible at `http://awx.mycompany.com/` (assuming your cluster has an Ingress controller configured).
+```bash
+$ kubectl get pods -l "app.kubernetes.io/managed-by=awx-operator"
+NAME                        READY   STATUS    RESTARTS   AGE
+awx-demo-77d96f88d5-pnhr8   4/4     Running   0          3m24s
+awx-demo-postgres-0         1/1     Running   0          3m34s
+
+$ kubectl get svc -l "app.kubernetes.io/managed-by=awx-operator"
+NAME                TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)        AGE
+awx-demo-postgres   ClusterIP   None           <none>        5432/TCP       4m4s
+awx-demo-service    NodePort    10.109.40.38   <none>        80:31006/TCP   3m56s
+```
+
+Once deployed, the AWX instance will be accessible by the command `minikube service awx-demo-service --url`.
 
 By default, the admin user is `admin` and the password is available in the `<resourcename>-admin-password` secret. To retrieve the admin password, run `kubectl get secret <resourcename>-admin-password -o jsonpath="{.data.password}" | base64 --decode`
 
+You just completed the most basic install of an AWX instance via this operator. Congratulations!!!!
 
-You just completed the most basic install of an AWX instance via this operator. Congratulations !
+For an example using the Nginx Controller in Minukube, don't miss our [demo video](https://asciinema.org/a/416946).
+
+[![asciicast](https://raw.githubusercontent.com/ansible/awx-operator/devel/docs/awx-demo.svg)](https://asciinema.org/a/416946)
 
 ### Admin user account configuration
 
@@ -92,14 +169,14 @@ There are three variables that are customizable for the admin user account creat
 
 | Name                        | Description                                  | Default          |
 | --------------------------- | -------------------------------------------- | ---------------- |
-| tower_admin_user            | Name of the admin user                       | admin            |
-| tower_admin_email           | Email of the admin user                      | test@example.com |
-| tower_admin_password_secret | Secret that contains the admin user password | Empty string     |
+| admin_user                  | Name of the admin user                       | admin            |
+| admin_email                 | Email of the admin user                      | test@example.com |
+| admin_password_secret       | Secret that contains the admin user password | Empty string     |
 
 
-> :warning: **tower_admin_password_secret must be a Kubernetes secret and not your text clear password**.
+> :warning: **admin_password_secret must be a Kubernetes secret and not your text clear password**.
 
-If `tower_admin_password_secret` is not provided, the operator will look for a secret named `<resourcename>-admin-password` for the admin password. If it is not present, the operator will generate a password and create a Secret from it named `<resourcename>-admin-password`.
+If `admin_password_secret` is not provided, the operator will look for a secret named `<resourcename>-admin-password` for the admin password. If it is not present, the operator will generate a password and create a Secret from it named `<resourcename>-admin-password`.
 
 To retrieve the admin password, run `kubectl get secret <resourcename>-admin-password -o jsonpath="{.data.password}" | base64 --decode`
 
@@ -119,98 +196,114 @@ stringData:
 
 ### Network and TLS Configuration
 
-#### Ingress Type
+#### Service Type
 
-By default, the AWX operator is not opinionated and won't force a specific ingress type on you. So, if `tower_ingress_type` is not specified as part of the Custom Resource specification, it will default to `none` and nothing ingress-wise will be created.
+If the `service_type` is not specified, the `ClusterIP` service will be used for your AWX Tower service.
 
-The AWX operator provides support for four kinds of `Ingress` to access AWX: `Ingress`, `Route`,  `LoadBalancer` and `NodePort`, To toggle between these options, you can add the following to your AWX CR:
+The `service_type` supported options are: `ClusterIP`, `LoadBalancer` and `NodePort`.
 
-  * Route
-
-```yaml
----
-spec:
-  ...
-  tower_ingress_type: Route
-```
-
-  * Ingress
-
-```yaml
----
-spec:
-  ...
-  tower_ingress_type: Ingress
-  tower_hostname: awx.mycompany.com
-```
-
-  * LoadBalancer
-
-```yaml
----
-spec:
-  ...
-  tower_ingress_type: LoadBalancer
-  tower_loadbalancer_protocol: http
-```
-
-  * NodePort
-
-```yaml
----
-spec:
-  ...
-  tower_ingress_type: NodePort
-```
-
-The AWX `Service` that gets created will have a `type` set based on the `tower_ingress_type` being used:
-
-| Ingress Type `tower_ingress_type`     | Service Type   |
-| ------------------------------------- | -------------- |
-| `LoadBalancer`                        | `LoadBalancer` |
-| `NodePort`                            | `NodePort`     |
-| `Ingress` or `Route` or not specified | `ClusterIP`    |
-
-#### TLS Termination
-
-  * Route
-
-The following variables are customizable to specify the TLS termination procedure when `Route` is picked as an Ingress
+The following variables are customizable for any `service_type`
 
 | Name                                  | Description                                   | Default                           |
 | ------------------------------------- | --------------------------------------------- | --------------------------------- |
-| tower_route_host                      | Common name the route answers for             | Empty string                      |
-| tower_route_tls_termination_mechanism | TLS Termination mechanism (Edge, Passthrough) | Edge                              |
-| tower_route_tls_secret                | Secret that contains the TLS information      | Empty string                      |
+| service_labels                  | Add custom labels                             | Empty string                      |
 
-  * Ingress
-
-The following variables are customizable to specify the TLS termination procedure when `Ingress` is picked as an Ingress
-
-| Name                       | Description                              | Default       |
-| -------------------------- | ---------------------------------------- | ------------- |
-| tower_ingress_annotations  | Ingress annotations                      | Empty string  |
-| tower_ingress_tls_secret   | Secret that contains the TLS information | Empty string  |
+```yaml
+---
+spec:
+  ...
+  service_type: ClusterIP
+  service_labels: |
+    environment: testing
+```
 
   * LoadBalancer
 
-The following variables are customizable to specify the TLS termination procedure when `LoadBalancer` is picked as an Ingress
+The following variables are customizable only when `service_type=LoadBalancer`
 
 | Name                           | Description                              | Default       |
 | ------------------------------ | ---------------------------------------- | ------------- |
-| tower_loadbalancer_annotations | LoadBalancer annotations                 | Empty string  |
-| tower_loadbalancer_protocol    | Protocol to use for Loadbalancer ingress | http          |
-| tower_loadbalancer_port        | Port used for Loadbalancer ingress       | 80            |
+| loadbalancer_annotations | LoadBalancer annotations                 | Empty string  |
+| loadbalancer_protocol    | Protocol to use for Loadbalancer ingress | http          |
+| loadbalancer_port        | Port used for Loadbalancer ingress       | 80            |
 
-When setting up a Load Balancer for HTTPS you will be required to set the `tower_loadbalancer_port` to move the port away from `80`.
+```yaml
+---
+spec:
+  ...
+  service_type: LoadBalancer
+  loadbalancer_protocol: https
+  loadbalancer_port: 443
+  loadbalancer_annotations: |
+    environment: testing
+  service_labels: |
+    environment: testing
+```
+
+When setting up a Load Balancer for HTTPS you will be required to set the `loadbalancer_port` to move the port away from `80`.
 
 The HTTPS Load Balancer also uses SSL termination at the Load Balancer level and will offload traffic to AWX over HTTP.
+
+#### Ingress Type
+
+By default, the AWX operator is not opinionated and won't force a specific ingress type on you. So, when the `ingress_type` is not specified, it will default to `none` and nothing ingress-wise will be created.
+
+The `ingress_type` supported options are: `none`, `ingress` and `route`. To toggle between these options, you can add the following to your AWX CRD:
+
+  * None
+
+```yaml
+---
+spec:
+  ...
+  ingress_type: none
+```
+
+  * Generic Ingress Controller
+
+The following variables are customizable when `ingress_type=ingress`. The `ingress` type creates an Ingress resource as [documented](https://kubernetes.io/docs/concepts/services-networking/ingress/) which can be shared with many other Ingress Controllers as [listed](https://kubernetes.io/docs/concepts/services-networking/ingress-controllers/).
+
+| Name                       | Description                              | Default                      |
+| -------------------------- | ---------------------------------------- | ---------------------------- |
+| ingress_annotations        | Ingress annotations                      | Empty string                 |
+| ingress_tls_secret         | Secret that contains the TLS information | Empty string                 |
+| hostname                   | Define the FQDN                          | {{ meta.name }}.example.com  |
+
+```yaml
+---
+spec:
+  ...
+  ingress_type: ingress
+  hostname: awx-demo.example.com
+  ingress_annotations: |
+    environment: testing
+```
+
+  * Route
+
+The following variables are customizable when `ingress_type=route`
+
+| Name                                  | Description                                   | Default                                                 |
+| ------------------------------------- | --------------------------------------------- | --------------------------------------------------------|
+| route_host                      | Common name the route answers for             | `<instance-name>-<namespace>-<routerCanonicalHostname>` |
+| route_tls_termination_mechanism | TLS Termination mechanism (Edge, Passthrough) | Edge                                                    |
+| route_tls_secret                | Secret that contains the TLS information      | Empty string                                            |
+
+```yaml
+---
+spec:
+  ...
+  ingress_type: route
+  route_host: awx-demo.example.com
+  route_tls_termination_mechanism: Passthrough
+  route_tls_secret: custom-route-tls-secret-name
+```
 
 ### Database Configuration
 
 #### External PostgreSQL Service
 
-In order for the AWX instance to rely on an external database, the Custom Resource needs to know about the connection details. Those connection details should be stored as a secret and either specified as `tower_postgres_configuration_secret` at the CR spec level, or simply be present on the namespace under the name `<resourcename>-postgres-configuration`.
+In order for the AWX instance to rely on an external database, the Custom Resource needs to know about the connection details. Those connection details should be stored as a secret and either specified as `postgres_configuration_secret` at the CR spec level, or simply be present on the namespace under the name `<resourcename>-postgres-configuration`.
 
 
 The secret should be formatted as follows:
@@ -229,8 +322,11 @@ stringData:
   username: <username to connect as>
   password: <password to connect with>
   sslmode: prefer
+  type: unmanaged
 type: Opaque
 ```
+
+> It is possible to set a specific username, password, port, or database, but still have the database managed by the operator. In this case, when creating the postgres-configuration secret, the `type: managed` field should be added.  
 
 **Note**: The variable `sslmode` is valid for `external` databases only. The allowed values are: `prefer`, `disable`, `allow`, `require`, `verify-ca`, `verify-full`.
 
@@ -246,11 +342,11 @@ The following variables are customizable for the managed PostgreSQL service
 
 | Name                                 | Description                                | Default                           |
 | ------------------------------------ | ------------------------------------------ | --------------------------------- |
-| tower_postgres_image                 | Path of the image to pull                  | postgres:12                       |
-| tower_postgres_resource_requirements | PostgreSQL container resource requirements | Empty object                      |
-| tower_postgres_storage_requirements  | PostgreSQL container storage requirements  | requests: {storage: 8Gi}          |
-| tower_postgres_storage_class         | PostgreSQL PV storage class                | Empty string                      |
-| tower_postgres_data_path             | PostgreSQL data path                       | `/var/lib/postgresql/data/pgdata` |
+| postgres_image                       | Path of the image to pull                  | postgres:12                       |
+| postgres_resource_requirements       | PostgreSQL container resource requirements | Empty object                      |
+| postgres_storage_requirements        | PostgreSQL container storage requirements  | requests: {storage: 8Gi}          |
+| postgres_storage_class               | PostgreSQL PV storage class                | Empty string                      |
+| postgres_data_path                   | PostgreSQL data path                       | `/var/lib/postgresql/data/pgdata` |
 
 Example of customization could be:
 
@@ -258,22 +354,22 @@ Example of customization could be:
 ---
 spec:
   ...
-  tower_postgres_resource_requirements:
+  postgres_resource_requirements:
     requests:
       cpu: 500m
       memory: 2Gi
     limits:
       cpu: 1
       memory: 4Gi
-  tower_postgres_storage_requirements:
+  postgres_storage_requirements:
     requests:
       storage: 8Gi
     limits:
       storage: 50Gi
-  tower_postgres_storage_class: fast-ssd
+  postgres_storage_class: fast-ssd
 ```
 
-**Note**: If `tower_postgres_storage_class` is not defined, Postgres will store it's data on a volume using the default storage class for your cluster.
+**Note**: If `postgres_storage_class` is not defined, Postgres will store it's data on a volume using the default storage class for your cluster.
 
 ### Advanced Configuration
 
@@ -283,13 +379,13 @@ There are a few variables that are customizable for awx the image management.
 
 | Name                      | Description                |
 | --------------------------| -------------------------- |
-| tower_image               | Path of the image to pull  |
-| tower_image_version       | Image version to pull      |
-| tower_image_pull_policy   | The pull policy to adopt   |
-| tower_image_pull_secret   | The pull secret to use     |
-| tower_ee_images           | A list of EEs to register  |
-| tower_redis_image         | Path of the image to pull  |
-| tower_redis_image_version | Image version to pull      |
+| image                     | Path of the image to pull  |
+| image_version             | Image version to pull      |
+| image_pull_policy         | The pull policy to adopt   |
+| image_pull_secret         | The pull secret to use     |
+| ee_images                 | A list of EEs to register  |
+| redis_image               | Path of the image to pull  |
+| redis_image_version       | Image version to pull      |
 
 Example of customization could be:
 
@@ -297,16 +393,16 @@ Example of customization could be:
 ---
 spec:
   ...
-  tower_image: myorg/my-custom-awx
-  tower_image_version: latest
-  tower_image_pull_policy: Always
-  tower_image_pull_secret: pull_secret_name
-  tower_ee_images:
+  image: myorg/my-custom-awx
+  image_version: latest
+  image_pull_policy: Always
+  image_pull_secret: pull_secret_name
+  ee_images:
     - name: my-custom-awx-ee
       image: myorg/my-custom-awx-ee
 ```
 
-**Note**: The `tower_image` and `tower_image_version` are intended for local mirroring scenarios. Please note that using a version of AWX other than the one bundled with the `awx-operator` is **not** supported. For the default values, check the [main.yml](https://github.com/ansible/awx-operator/blob/devel/roles/installer/defaults/main.yml) file.
+**Note**: The `image` and `image_version` are intended for local mirroring scenarios. Please note that using a version of AWX other than the one bundled with the `awx-operator` is **not** supported. For the default values, check the [main.yml](https://github.com/ansible/awx-operator/blob/devel/roles/installer/defaults/main.yml) file.
 
 #### Privileged Tasks
 
@@ -316,7 +412,7 @@ Depending on the type of tasks that you'll be running, you may find that you nee
 ---
 spec:
   ...
-  tower_task_privileged: true
+  task_privileged: true
 ```
 
 If you are attempting to do this on an OpenShift cluster, you will need to grant the `awx` ServiceAccount the `privileged` SCC, which can be done with:
@@ -332,10 +428,11 @@ Again, this is the most relaxed SCC that is provided by OpenShift, so be sure to
 
 The resource requirements for both, the task and the web containers are configurable - both the lower end (requests) and the upper end (limits).
 
-| Name                             | Description                          | Default                             |
-| -------------------------------- | ------------------------------------ | ----------------------------------- |
-| tower_web_resource_requirements  | Web container resource requirements  | requests: {cpu: 1000m, memory: 2Gi} |
-| tower_task_resource_requirements | Task container resource requirements | requests: {cpu: 500m, memory: 1Gi}  |
+| Name                             | Description                                      | Default                             |
+| -------------------------------- | ------------------------------------------------ | ----------------------------------- |
+| web_resource_requirements        | Web container resource requirements              | requests: {cpu: 1000m, memory: 2Gi} |
+| task_resource_requirements       | Task container resource requirements             | requests: {cpu: 500m, memory: 1Gi}  |
+| ee_resource_requirements         | EE control plane container resource requirements | requests: {cpu: 500m, memory: 1Gi}  |
 
 Example of customization could be:
 
@@ -343,14 +440,21 @@ Example of customization could be:
 ---
 spec:
   ...
-  tower_web_resource_requirements:
+  web_resource_requirements:
     requests:
       cpu: 1000m
       memory: 2Gi
     limits:
       cpu: 2000m
       memory: 4Gi
-  tower_task_resource_requirements:
+  task_resource_requirements:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+  ee_resource_requirements:
     requests:
       cpu: 500m
       memory: 1Gi
@@ -361,19 +465,19 @@ spec:
 
 #### Assigning AWX pods to specific nodes
 
-You can constrain the AWX pods created by the operator to run on a certain subset of nodes. `tower_node_selector` and `tower_postgres_selector` constrains
-the AWX pods to run only on the nodes that match all the specified key/value pairs. `tower_tolerations` and `tower_postgres_tolerations` allow the AWX
+You can constrain the AWX pods created by the operator to run on a certain subset of nodes. `node_selector` and `postgres_selector` constrains
+the AWX pods to run only on the nodes that match all the specified key/value pairs. `tolerations` and `postgres_tolerations` allow the AWX
 pods to be scheduled onto nodes with matching taints.
 
 
 | Name                           | Description                 | Default |
 | -------------------------------| --------------------------- | ------- |
-| tower_postgres_image           | Path of the image to pull   | 12      |
-| tower_postgres_image_version   | Image version to pull       | 12      |
-| tower_node_selector            | AWX pods' nodeSelector      | ''      |
-| tower_tolerations              | AWX pods' tolerations       | ''      |
-| tower_postgres_selector        | Postgres pods' nodeSelector | ''      |
-| tower_postgres_tolerations     | Postgres pods' tolerations  | ''      |
+| postgres_image                 | Path of the image to pull   | 12      |
+| postgres_image_version         | Image version to pull       | 12      |
+| node_selector                  | AWX pods' nodeSelector      | ''      |
+| tolerations                    | AWX pods' tolerations       | ''      |
+| postgres_selector              | Postgres pods' nodeSelector | ''      |
+| postgres_tolerations           | Postgres pods' tolerations  | ''      |
 
 Example of customization could be:
 
@@ -381,20 +485,20 @@ Example of customization could be:
 ---
 spec:
   ...
-  tower_node_selector: |
+  node_selector: |
     disktype: ssd
     kubernetes.io/arch: amd64
     kubernetes.io/os: linux
-  tower_tolerations: |
+  tolerations: |
     - key: "dedicated"
       operator: "Equal"
       value: "AWX"
       effect: "NoSchedule"
-  tower_postgres_selector: |
+  postgres_selector: |
     disktype: ssd
     kubernetes.io/arch: amd64
     kubernetes.io/os: linux
-  tower_postgres_tolerations: |
+  postgres_tolerations: |
     - key: "dedicated"
       operator: "Equal"
       value: "AWX"
@@ -431,11 +535,11 @@ In cases which you want to persist the `/var/lib/projects` directory, there are 
 
 | Name                               | Description                                                                                          | Default        |
 | -----------------------------------| ---------------------------------------------------------------------------------------------------- | ---------------|
-| tower_projects_persistence         | Whether or not the /var/lib/projects directory will be persistent                                    |  false         |
-| tower_projects_storage_class       | Define the PersistentVolume storage class                                                            |  ''            |
-| tower_projects_storage_size        | Define the PersistentVolume size                                                                     |  8Gi           |
-| tower_projects_storage_access_mode | Define the PersistentVolume access mode                                                              |  ReadWriteMany |
-| tower_projects_existing_claim      | Define an existing PersistentVolumeClaim to use (cannot be combined with `tower_projects_storage_*`) |  ''            |
+| projects_persistence         | Whether or not the /var/lib/projects directory will be persistent                                    |  false         |
+| projects_storage_class       | Define the PersistentVolume storage class                                                            |  ''            |
+| projects_storage_size        | Define the PersistentVolume size                                                                     |  8Gi           |
+| projects_storage_access_mode | Define the PersistentVolume access mode                                                              |  ReadWriteMany |
+| projects_existing_claim      | Define an existing PersistentVolumeClaim to use (cannot be combined with `projects_storage_*`) |  ''            |
 
 Example of customization when the `awx-operator` automatically handles the persistent volume could be:
 
@@ -443,9 +547,9 @@ Example of customization when the `awx-operator` automatically handles the persi
 ---
 spec:
   ...
-  tower_projects_persistence: true
-  tower_projects_storage_class: rook-ceph
-  tower_projects_storage_size: 20Gi
+  projects_persistence: true
+  projects_storage_class: rook-ceph
+  projects_storage_size: 20Gi
 ```
 
 #### Custom Volume and Volume Mount Options
@@ -454,12 +558,36 @@ In a scenario where custom volumes and volume mounts are required to either over
 
 | Name                           | Description                                              | Default |
 | ------------------------------ | -------------------------------------------------------- | ------- |
-| tower_extra_volumes            | Specify extra volumes to add to the application pod      | ''      |
-| tower_web_extra_volume_mounts  | Specify volume mounts to be added to Web container       | ''      |
-| tower_task_extra_volume_mounts | Specify volume mounts to be added to Task container      | ''      |
-| tower_ee_extra_volume_mounts   | Specify volume mounts to be added to Execution container | ''      |
+| extra_volumes                  | Specify extra volumes to add to the application pod      | ''      |
+| web_extra_volume_mounts        | Specify volume mounts to be added to Web container       | ''      |
+| task_extra_volume_mounts       | Specify volume mounts to be added to Task container      | ''      |
+| ee_extra_volume_mounts         | Specify volume mounts to be added to Execution container | ''      |
 
 Example configuration for ConfigMap
+
+#### Default execution environments from private registries
+
+In order to register default execution environments from private registries, the Custom Resource needs to know about the pull credentials. Those credentials should be stored as a secret and either specified as `ee_pull_credentials_secret` at the CR spec level, or simply be present on the namespace under the name `<resourcename>-ee-pull-credentials` . Instance initialization will register a `Container registry` type credential on the deployed instance and assign it to the registered default execution environments.
+
+The secret should be formated as follows:
+
+```yaml
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: <resourcename>-ee-pull-credentials
+  namespace: <target namespace>
+stringData:
+  url: <registry url. i.e. quay.io>
+  username: <username to connect as>
+  password: <password to connect with>
+  ssl_verify: <Optional attribute. Whether verify ssl connection or not. Accepted values "True" (default), "False" >
+type: Opaque
+```
+
+##### Control plane ee from private registry
+The images listed in "ee_images" will be added as globally available Execution Environments. The "control_plane_ee_image" will be used to run project updates. In order to use a private image for any of these you'll need to use `image_pull_secret` to provide a k8s pull secret to access it. Currently the same secret is used for any of these images supplied at install time.
 
 ```yaml
 ---
@@ -484,17 +612,17 @@ Example spec file for volumes and volume mounts
 ---
     spec:
     ...
-      tower_ee_extra_volume_mounts: |
+      ee_extra_volume_mounts: |
         - name: ansible-cfg
           mountPath: /etc/ansible/ansible.cfg
           subPath: ansible.cfg
 
-      tower_task_extra_volume_mounts: |
+      task_extra_volume_mounts: |
         - name: custom-py
           mountPath: /etc/tower/conf.d/custom.py
           subPath: custom.py
 
-      tower_extra_volumes: |
+      extra_volumes: |
         - name: ansible-cfg
           configMap:
             defaultMode: 420
@@ -520,153 +648,84 @@ If you need to export custom environment variables to your containers.
 
 | Name                          | Description                                              | Default |
 | ----------------------------- | -------------------------------------------------------- | ------- |
-| tower_task_extra_env          | Environment variables to be added to Task container      | ''      |
-| tower_web_extra_env           | Environment variables to be added to Web container       | ''      |
+| task_extra_env                | Environment variables to be added to Task container      | ''      |
+| web_extra_env                 | Environment variables to be added to Web container       | ''      |
+| ee_extra_env                  | Environment variables to be added to EE container        | ''      |
 
 Example configuration of environment variables
 
 ```yaml
   spec:
-    tower_task_extra_env: |
+    task_extra_env: |
       - name: MYCUSTOMVAR
         value: foo
-    tower_web_extra_env: |
+    web_extra_env: |
+      - name: MYCUSTOMVAR
+        value: foo
+    ee_extra_env: |
       - name: MYCUSTOMVAR
         value: foo
 ```
 
+#### Extra Settings
 
-## Development
+With`extra_settings`, you can pass multiple custom settings via the `awx-operator`. The parameter `extra_settings`  will be appended to the `/etc/tower/settings.py` and can be an alternative to the `extra_volumes` parameter.
 
-### Testing
+| Name                          | Description                                              | Default |
+| ----------------------------- | -------------------------------------------------------- | ------- |
+| extra_settings                | Extra settings                                           | ''      |
 
-This Operator includes a [Molecule](https://molecule.readthedocs.io/en/stable/)-based test environment, which can be executed standalone in Docker (e.g. in CI or in a single Docker container anywhere), or inside any kind of Kubernetes cluster (e.g. Minikube).
+Example configuration of `extra_settings` parameter
 
-You need to make sure you have Molecule installed before running the following commands. You can install Molecule with:
+```yaml
+  spec:
+    extra_settings:
+      - setting: MAX_PAGE_SIZE
+        value: "500"
 
-```sh
-#> pip install 'molecule[docker]'
+      - setting: AUTH_LDAP_BIND_DN
+        value: "cn=admin,dc=example,dc=com"
 ```
 
-Running `molecule test` sets up a clean environment, builds the operator, runs all configured tests on an example operator instance, then tears down the environment (at least in the case of Docker).
+#### Service Account
 
-If you want to actively develop the operator, use `molecule converge`, which does everything but tear down the environment at the end.
+If you need to modify some `ServiceAccount` proprieties
 
-#### Testing in Docker
+| Name                          | Description                                              | Default |
+| ----------------------------- | -------------------------------------------------------- | ------- |
+| service_account_annotations   | Annotations to the ServiceAccount                        | ''      |
 
-```sh
-#> molecule test -s test-local
+Example configuration of environment variables
+
+```yaml
+  spec:
+    service_account_annotations: |
+      eks.amazonaws.com/role-arn: arn:aws:iam::<ACCOUNT_ID>:role/<IAM_ROLE_NAME>
 ```
 
-This environment is meant for headless testing (e.g. in a CI environment, or when making smaller changes which don't need to be verified through a web interface). It is difficult to test things like AWX's web UI or to connect other applications on your local machine to the services running inside the cluster, since it is inside a Docker container with no static IP address.
+### Upgrading
 
-#### Testing in Minikube
+To upgrade AWX, it is recommended to upgrade the awx-operator to the version that maps to the desired version of AWX.  To find the version of AWX that will be installed by the awx-operator by default, check the version specified in the `image_version` variable in `roles/installer/defaults/main.yml` for that particular release.
 
-```sh
-#> minikube start --memory 8g --cpus 4
-#> minikube addons enable ingress
-#> molecule test -s test-minikube
-```
+Apply the awx-operator.yml for that release to upgrade the operator, and in turn also upgrade your AWX deployment.
 
-[Minikube](https://kubernetes.io/docs/tasks/tools/install-minikube/) is a more full-featured test environment running inside a full VM on your computer, with an assigned IP address. This makes it easier to test things like NodePort services and Ingress from outside the Kubernetes cluster (e.g. in a browser on your computer).
 
-Once the operator is deployed, you can visit the AWX UI in your browser by following these steps:
+## Contributing
 
-  1. Make sure you have an entry like `IP_ADDRESS  example-awx.test` in your `/etc/hosts` file. (Get the IP address with `minikube ip`.)
-  2. Visit `http://example-awx.test/` in your browser. (Default admin login is `test`/`changeme`.)
+Please visit [our contributing guidelines](https://github.com/ansible/awx-operator/blob/devel/CONTRIBUTING.md).
 
-Alternatively, you can also update the service `awx-service` in your namespace to use the type `NodePort` and use following command to get the URL to access your AWX instance:
-
-```sh
-#> minikube service <serviceName> -n <namespaceName> --url
-```
-
-### Generating a bundle
-
-> :warning: operator-sdk version 0.19.4 is needed to run the following commands
-
-If one has the Operator Lifecycle Manager (OLM) installed, the following steps is the process to generate the bundle that would nicely display in the OLM interface.
-
-At the root of this directory:
-
-1. Build and publish the operator
-
-```
-#> operator-sdk build registry.example.com/ansible/awx-operator:mytag
-#> podman push registry.example.com/ansible/awx-operator:mytag
-```
-
-2. Build and publish the bundle
-
-```
-#> podman build . -f bundle.Dockerfile -t registry.example.com/ansible/awx-operator-bundle:mytag
-#> podman push registry.example.com/ansible/awx-operator-bundle:mytag
-```
-
-3. Build and publish an index with your bundle in it
-
-```
-#> opm index add --bundles registry.example.com/ansible/awx-operator-bundle:mytag --tag registry.example.com/ansible/awx-operator-catalog:mytag
-#> podman push registry.example.com/ansible/awx-operator-catalog:mytag
-```
-
-4. In your Kubernetes create a new CatalogSource pointing to `registry.example.com/ansible/awx-operator-catalog:mytag`
-
-```
----
-apiVersion: operators.coreos.com/v1alpha1
-kind: CatalogSource
-metadata:
-  name: <catalogsource-name>
-  namespace: <namespace>
-spec:
-  displayName: 'myoperatorhub'
-  image: registry.example.com/ansible/awx-operator-catalog:mytag
-  publisher: 'myoperatorhub'
-  sourceType: grpc
-```
-
-Applying this template will do it. Once the CatalogSource is in a READY state, the bundle should be available on the OperatorHub tab (as part of the custom CatalogSource that just got added)
-
-5. Enjoy
 
 ## Release Process
 
 There are a few moving parts to this project:
 
-  1. The Docker image which powers AWX Operator.
-  2. The `awx-operator.yaml` Kubernetes manifest file which initially deploys the Operator into a cluster.
+  * The `awx-operator` container image which powers AWX Operator
+  * The `awx-operator.yaml` file, which initially deploys the Operator
+  * The ClusterServiceVersion (CSV), which is generated as part of the bundle and needed for the olm-catalog
 
 Each of these must be appropriately built in preparation for a new tag:
 
-### Verify Functionality
-
-Run the following command inside this directory:
-
-```sh
-#> operator-sdk build quay.io/<user>/awx-operator:test
-```
-
-Then push the generated image to Docker Hub:
-
-```sh
-#> docker push quay.io/<user>/awx-operator:test
-```
-
-After it is built, test it on a local cluster:
-
-
-```sh
-#> minikube start --memory 6g --cpus 4
-#> minikube addons enable ingress
-#> ansible-playbook ansible/deploy-operator.yml -e operator_image=quay.io/<user>/awx-operator -e operator_version=test
-#> kubectl create namespace example-awx
-#> ansible-playbook ansible/instantiate-awx-deployment.yml -e tower_namespace=example-awx
-#> <test everything>
-#> minikube delete
-```
-
-### Update version
+### Update version and files
 
 Update the awx-operator version:
 
@@ -676,6 +735,51 @@ Once the version has been updated, run from the root of the repo:
 
 ```sh
 #> ansible-playbook ansible/chain-operator-files.yml
+```
+
+Generate the olm-catalog bundle.
+
+```bash
+$ operator-sdk generate bundle --operator-name awx-operator --version <new_tag>
+```
+
+> This should be done with operator-sdk v0.19.4.  
+
+> It is a good idea to use the [build script](./build.sh) at this point to build the catalog and test out installing it in Operator Hub.
+
+### Verify Functionality
+
+Run the following command inside this directory:
+
+```sh
+#> operator-sdk build quay.io/<user>/awx-operator:<new-version>
+```
+
+Then push the generated image to Docker Hub:
+
+```sh
+#> docker push quay.io/<user>/awx-operator:<new-version>
+```
+
+After it is built, test it on a local cluster:
+
+
+```sh
+#> minikube start --memory 6g --cpus 4
+#> minikube addons enable ingress
+#> ansible-playbook ansible/deploy-operator.yml -e operator_image=quay.io/<user>/awx-operator -e operator_version=<new-version> -e pull_policy=Always
+#> kubectl create namespace example-awx
+#> ansible-playbook ansible/instantiate-awx-deployment.yml -e namespace=example-awx -e image=quay.io/<user>/awx -e service_type=nodeport
+#> # Verify that the awx-task and awx-web containers are launched 
+#> # with the right version of the awx image
+#> minikube delete
+```
+
+### Update changelog
+
+Generate a list of commits between the versions and add it to the [changelog](./CHANGELOG.md).
+```sh
+#> git log --no-merges --pretty="- %s (%an) - %h " <old_tag>..<new_tag>
 ```
 
 ### Commit / Create Release
