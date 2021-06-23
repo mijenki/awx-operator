@@ -31,7 +31,7 @@ spec:
       serviceAccountName: '{{ meta.name }}'
 {% if image_pull_secrets %}
       imagePullSecrets:
-{% for image_secret in tower_image_pull_secrets %}
+{% for image_secret in image_pull_secrets %}
         - name: {{ image_secret }}
 {% endfor %}
 {% endif %}
